@@ -5,7 +5,8 @@ from .const import DOMAIN
 
 import voluptuous as vol
 
-DATA_SCHEMA = vol.Schema({("api_key"): str})
+
+DATA_SCHEMA = {vol.Required("api_key"): str}
 
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -13,8 +14,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_user(self, user_input=None):
         if user_input is not None:
-            # Validate the API key here
-            pass  # todo: validate api key
+            # Validate the API token here
+            pass  # todo: validate api token
         else:
             # Show the form to the user
-            return self.async_show_form(step_id="user", data_schema=DATA_SCHEMA)
+            return self.async_show_form(step_id="user",
+                                        data_schema=vol.Schema(DATA_SCHEMA)
+                                        )

@@ -1,0 +1,13 @@
+{
+    "config": {
+        "step": { 
+            "user": {
+                "title": "PowerShaper Configuration",
+                "description": "Please enter your API Token",
+                "data": { 
+                    "api_token": "API token"
+                }
+            }
+        }
+    }
+}
