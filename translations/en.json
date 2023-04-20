@@ -8,6 +8,10 @@
                     "api_token": "API token"
                 }
             }
-        }
+        },
+        "error": {
+            "invalid_api_token": "Invalid API token, please try again",
+            "linking": "Unknown linking error occurred."
+          }
     }
 }
