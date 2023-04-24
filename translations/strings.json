@@ -10,7 +10,7 @@
             }
         },
         "error": {
-            "invalid_api_token": "Invalid API token.",
+            "invalid_token_length": "Invalid token length.",
             "failed_connection": "Failed to connect to the Powershaper Service."
         }
     }
