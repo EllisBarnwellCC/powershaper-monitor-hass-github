@@ -3,15 +3,15 @@
         "step": { 
             "user": {
                 "title": "PowerShaper Configuration",
-                "description": "Please enter your API Token",
+                "description": "Please enter your API token",
                 "data": { 
                     "api_token": "API token"
                 }
             }
         },
         "error": {
-            "invalid_api_token": "Invalid API token, please try again",
-            "linking": "Unknown linking error occurred."
-          }
+            "invalid_api_token": "Invalid API token.",
+            "failed_connection": "Failed to connect to the Powershaper Service."
+        }
     }
 }
