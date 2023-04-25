@@ -2,4 +2,4 @@
 
 DOMAIN = "powershaper"
 API_TOKEN_LENGTH = 40
-CONSENT_UUID_URL = "https://app.powershaper.io/meters/api/v1/meters/"
+URL_CONSENT_UUID = "https://app.powershaper.io/meters/api/v1/meters/"

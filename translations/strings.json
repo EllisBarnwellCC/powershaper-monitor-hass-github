@@ -10,8 +10,11 @@
             }
         },
         "error": {
-            "invalid_token_length": "Invalid token length.",
-            "failed_connection": "Failed to connect to the Powershaper Service."
+            "invalid_token_length": "Invalid token length",
+            "invalid_access": "Invalid token: failed to authenticate",
+            "quota_exceeded": "Call rate quota exceeded, please try again in a minute",
+            "client_error": "Error occurred fetching from Powershaper API",
+            "unknown_error": "An unexpected error has occurred"
         }
     }
 }
