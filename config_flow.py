@@ -3,7 +3,7 @@ from typing import Any
 from homeassistant import config_entries, exceptions
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from .const import (DOMAIN, API_TOKEN_LENGTH, URL_CONSENT_UUID)
+from .const import (DOMAIN, API_TOKEN_LENGTH, URL_BASE)
 from aiohttp.client_exceptions import ClientError
 from aiohttp.web import HTTPForbidden
 
@@ -16,7 +16,7 @@ DATA_SCHEMA = {vol.Required("api_token"): str}
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_get_auth_data(hass: HomeAssistant, user_input: dict[str, Any]) -> dict[str, Any]:
+async def async_validate_api_token(hass: HomeAssistant, user_input: dict[str, Any]):
     """Validate the API token provided by the user"""
 
     api_token = user_input['api_token']
@@ -26,7 +26,7 @@ async def async_get_auth_data(hass: HomeAssistant, user_input: dict[str, Any]) -
         raise ValueError
 
     session = async_get_clientsession(hass)
-    api_url = URL_CONSENT_UUID
+    api_url = URL_BASE
     headers = {
         'Authorization': f'Token {api_token}',
         'Content-Type': 'application/json'
@@ -53,9 +53,6 @@ async def async_get_auth_data(hass: HomeAssistant, user_input: dict[str, Any]) -
     _LOGGER.debug(
         f"Sucessfully fetched the consent_uuid from the powershaper api. Consent UUID: {response_data[0]['consent_uuid']}")
 
-    # return the data returned from the powershaper's authentication endpoint (contains consent_uuid)
-    return response_data[0]
-
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for the PowerShaper."""
@@ -67,7 +64,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             try:
                 # validate api token
-                auth_data = await async_get_auth_data(self.hass, user_input)
+                await async_validate_api_token(self.hass, user_input)
             except ValueError:
                 errors["base"] = "invalid_token_length"
             except HTTPForbidden:
@@ -79,7 +76,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             except Exception:
                 errors['base'] = "unknown_error"
             else:
-                return self.async_create_entry(title="Powershaper", data=auth_data)
+                return self.async_create_entry(title="Powershaper", data=user_input)
 
         return self.async_show_form(step_id="user",
                                     data_schema=vol.Schema(DATA_SCHEMA),

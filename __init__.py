@@ -14,26 +14,15 @@ DOMAIN = "powershaper"
 _LOGGER = logging.getLogger(__name__)
 
 
-def setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Set up a skeleton component."""
-    # States are in the format DOMAIN.OBJECT_ID.
-    _LOGGER.debug(
-        f"WHEN DOES THIS GET CALLED ==================================")
-
-    hass.data[DOMAIN] = {}
-
-    # hass.states.set("powershaper.Powershaper", "Powershaper Works!")
-
-    # Return boolean to indicate that initialization was successfully.
-    return True
-
-
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     """Set up the Powershaper platform."""
-    consent_uuid = entry.data
-    _LOGGER.debug(f"entry.data: {entry.data}")
 
-    hass.data[DOMAIN][entry.entry_id] = {"consent_uuid": consent_uuid}
+    api_token = entry.data['api_token']
+
+    _LOGGER.debug(f"entry.data['api_token']: {entry.data['api_token']}")
+
+    hass.data[DOMAIN] = {}
+    hass.data[DOMAIN][entry.entry_id] = {"api_token": api_token}
 
     hass.async_create_task(
         hass.config_entries.async_forward_entry_setup(entry, Platform.SENSOR))
