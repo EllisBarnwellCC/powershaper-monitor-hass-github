@@ -16,8 +16,8 @@ DATA_SCHEMA = {vol.Required("api_token"): str}
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_get_consent_uuid(hass: HomeAssistant, user_input: dict[str, Any]) -> str:
-    """Request the consent_uuid using the API token provided by the user"""
+async def async_get_auth_data(hass: HomeAssistant, user_input: dict[str, Any]) -> dict[str, Any]:
+    """Validate the API token provided by the user"""
 
     api_token = user_input['api_token']
     if len(api_token) != API_TOKEN_LENGTH:
@@ -53,8 +53,8 @@ async def async_get_consent_uuid(hass: HomeAssistant, user_input: dict[str, Any]
     _LOGGER.debug(
         f"Sucessfully fetched the consent_uuid from the powershaper api. Consent UUID: {response_data[0]['consent_uuid']}")
 
-    # return the consent_uuid required to access user's powershaper service
-    return response_data[0]['consent_uuid']
+    # return the data returned from the powershaper's authentication endpoint (contains consent_uuid)
+    return response_data[0]
 
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -66,7 +66,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             try:
-                consent_uuid = await async_get_consent_uuid(self.hass, user_input)
+                # validate api token
+                auth_data = await async_get_auth_data(self.hass, user_input)
             except ValueError:
                 errors["base"] = "invalid_token_length"
             except HTTPForbidden:
@@ -78,7 +79,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             except Exception:
                 errors['base'] = "unknown_error"
             else:
-                return self.async_create_entry(title="powershaper", data=consent_uuid)
+                return self.async_create_entry(title="Powershaper", data=auth_data)
 
         return self.async_show_form(step_id="user",
                                     data_schema=vol.Schema(DATA_SCHEMA),

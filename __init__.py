@@ -1,24 +1,53 @@
-"""
-The "hello world" custom component.
-This component implements the bare minimum that a component should implement.
-Configuration:
-To use the powershaper component you will need to add the following to your
-configuration.yaml file.
-powershaper:
-"""
+"""The Powershaper Integration"""
 from __future__ import annotations
-
-from homeassistant.core import HomeAssistant
 from homeassistant.helpers.typing import ConfigType
+
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from homeassistant.const import Platform
+from .const import DOMAIN
+import logging
 
 # The domain of your component. Should be equal to the name of your component.
 DOMAIN = "powershaper"
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up a skeleton component."""
     # States are in the format DOMAIN.OBJECT_ID.
-    hass.states.set("powershaper.Powershaper", "Powershaper Works!")
+    _LOGGER.debug(
+        f"WHEN DOES THIS GET CALLED ==================================")
+
+    hass.data[DOMAIN] = {}
+
+    # hass.states.set("powershaper.Powershaper", "Powershaper Works!")
 
     # Return boolean to indicate that initialization was successfully.
     return True
+
+
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
+    """Set up the Powershaper platform."""
+    consent_uuid = entry.data
+    _LOGGER.debug(f"entry.data: {entry.data}")
+
+    hass.data[DOMAIN][entry.entry_id] = {"consent_uuid": consent_uuid}
+
+    hass.async_create_task(
+        hass.config_entries.async_forward_entry_setup(entry, Platform.SENSOR))
+
+    return True
+
+
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Unload a config entry."""
+    # This is called when an entry/configured device is to be removed. The class
+    # needs to unload itself, and remove callbacks. See the classes for further
+    # details
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, Platform.SENSOR)
+    if unload_ok:
+        hass.data[DOMAIN].pop(entry.entry_id)
+
+    return unload_ok
