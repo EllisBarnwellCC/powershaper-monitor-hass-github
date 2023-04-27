@@ -3,7 +3,7 @@ from typing import Any
 from homeassistant import config_entries, exceptions
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from .const import (DOMAIN, API_TOKEN_LENGTH, URL_BASE)
+from .const import (DOMAIN, API_TOKEN_LENGTH, POWERSHAPER_AUTH_URL)
 from aiohttp.client_exceptions import ClientError
 from aiohttp.web import HTTPForbidden
 
@@ -16,7 +16,7 @@ DATA_SCHEMA = {vol.Required("api_token"): str}
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_validate_api_token(hass: HomeAssistant, user_input: dict[str, Any]):
+async def async_validate_api_token(hass: HomeAssistant, user_input: dict[str, Any]) -> None:
     """Validate the API token provided by the user"""
 
     api_token = user_input['api_token']
@@ -26,7 +26,7 @@ async def async_validate_api_token(hass: HomeAssistant, user_input: dict[str, An
         raise ValueError
 
     session = async_get_clientsession(hass)
-    api_url = URL_BASE
+    api_url = POWERSHAPER_AUTH_URL
     headers = {
         'Authorization': f'Token {api_token}',
         'Content-Type': 'application/json'

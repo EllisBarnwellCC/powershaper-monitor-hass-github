@@ -19,9 +19,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
 
     api_token = entry.data['api_token']
 
-    _LOGGER.debug(f"entry.data['api_token']: {entry.data['api_token']}")
+    # Store the client and sensors in the hass data for later use
+    if DOMAIN not in hass.data:
+        hass.data[DOMAIN] = {}
 
-    hass.data[DOMAIN] = {}
     hass.data[DOMAIN][entry.entry_id] = {"api_token": api_token}
 
     hass.async_create_task(
