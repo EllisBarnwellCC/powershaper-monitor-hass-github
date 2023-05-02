@@ -8,7 +8,7 @@ from aiohttp.web import HTTPForbidden
 from .const import (DOMAIN, POWERSHAPER_AUTH_URL, POWERSHAPER_BASE_SENSOR_URL)
 from homeassistant.const import DEVICE_CLASS_GAS, UnitOfEnergy
 from homeassistant.components.recorder.models import StatisticData, StatisticMetaData
-from homeassistant.components.recorder.statistics import async_add_external_statistics
+from homeassistant.components.recorder.statistics import async_add_external_statistics, async_import_statistics
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
@@ -70,7 +70,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
     async_add_entities(entities)
 
     timestamp = datetime.datetime.strptime(
-        "2023-04-30T00:00:00Z", '%Y-%m-%dT%H:%M:%SZ')
+        "2023-05-02T09:00:00Z", '%Y-%m-%dT%H:%M:%SZ')
 
     timestamp = timestamp.replace(tzinfo=pytz.UTC)
 
@@ -80,26 +80,26 @@ async def async_setup_entry(hass, entry, async_add_entities):
     metadata = {
         "has_mean": False,
         "has_sum": True,
-        "name": "test",
-        "source": DOMAIN,
-        "statistic_id": f"{DOMAIN}:energy_consumption",
+        "name": "test2",
+        "source": "recorder",
+        "statistic_id": "sensor.powershaper_gas",
         "unit_of_measurement": gas_meter.unit_of_measurement,
     }
 
     statistics.append(
         StatisticData(
             start=timestamp,
-            state=33.33,
+            state=11.05,
         )
     )
-    _LOGGER.debug("Before external statistics")
-
+    _LOGGER.debug("before importing statistics")
     # Add historic data to statistics
-    async_add_external_statistics(
-        hass, metadata, statistics
-    )
-    _LOGGER.debug("after external statistics")
+    async_import_statistics(hass, metadata, statistics)
+    # async_add_external_statistics(
+    #     hass, metadata, statistics
+    # )
 
+    _LOGGER.debug("after importing statistics")
     # Store the client and sensors in the hass data for later use
     if DOMAIN not in hass.data:
         hass.data[DOMAIN] = {}
@@ -110,8 +110,8 @@ async def async_setup_entry(hass, entry, async_add_entities):
     return True
 
 
-def url_builder(sensor_type: str, consent_uuid: str) -> str:
-    return POWERSHAPER_BASE_SENSOR_URL + consent_uuid + "/" + sensor_type + "?start=2023-04-30&end=2023-04-30&aggregate=day&tz=UTC"
+def url_builder(sensor_type: str, consent_uuid: str, start_date: str, end_date: str, aggregate: str) -> str:
+    return POWERSHAPER_BASE_SENSOR_URL+consent_uuid+"/"+sensor_type+"?start="+start_date+"&end="+end_date+"&aggregate="+aggregate+"&tz=UTC"
 
 
 class GasMeter(SensorEntity):
@@ -119,7 +119,7 @@ class GasMeter(SensorEntity):
 
     _attr_device_class = SensorDeviceClass.ENERGY
     _attr_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
-    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_state_class = SensorStateClass.MEASUREMENT
 
     def __init__(self,  entry_data, sensor_type, scan_interval, consent_uuid, api_token):
         """Initialize the sensor."""
@@ -135,7 +135,10 @@ class GasMeter(SensorEntity):
 
         try:
             session = async_get_clientsession(self.hass)
-            api_url = url_builder(self._sensor_type, self._consent_uuid)
+            today_date = datetime.date.today()
+            today_string = today_date.strftime('%Y-%m-%d')
+            api_url = url_builder(
+                self._sensor_type, self._consent_uuid, today_string, today_string, "none")
             headers = {
                 'Authorization': f'Token {self._api_token}',
                 'Content-Type': 'application/json'
@@ -144,7 +147,7 @@ class GasMeter(SensorEntity):
             async with session.get(api_url, headers=headers) as response:
                 response_data = await response.json()
 
-            state = response_data[0]['energy_kwh']
+            state = response_data[-1]['energy_kwh']
             _LOGGER.debug(f"state: {state}")
 
             # Set the state of the sensor
