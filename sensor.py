@@ -19,17 +19,16 @@ from homeassistant.components.sensor import (
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_get_consent_uuid(hass, api_token) -> str:
+async def async_fetch_data(hass, api_token, url):
     """Get the consnet_uuid using the api token provided by the user"""
 
     session = async_get_clientsession(hass)
-    api_url = POWERSHAPER_AUTH_URL
     headers = {
         'Authorization': f'Token {api_token}',
         'Content-Type': 'application/json'
     }
 
-    async with session.get(api_url, headers=headers) as response:
+    async with session.get(url, headers=headers) as response:
         response_data = await response.json()
 
     if response.status == 403:
@@ -42,10 +41,7 @@ async def async_get_consent_uuid(hass, api_token) -> str:
             f"Error occurred whilst fetching Powershaper API, response status: {response.status}")
         raise ClientError
 
-    _LOGGER.debug(
-        f"Sucessfully fetched the consent_uuid from the powershaper api. Consent UUID: {response_data[0]['consent_uuid']}")
-
-    return response_data[0]['consent_uuid']
+    return response_data
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
@@ -57,9 +53,14 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
     # fetch the consent_uuid
     try:
-        consent_uuid = await async_get_consent_uuid(hass, api_token)
+        response_data = await async_fetch_data(hass, api_token, POWERSHAPER_AUTH_URL)
     except HTTPForbidden:
         _LOGGER.debug("error occurred")
+
+    consent_uuid = response_data[0]["consent_uuid"]
+
+    _LOGGER.debug(
+        f"Sucessfully fetched the consent_uuid from the powershaper api. Consent UUID: {consent_uuid}")
 
     # Create a list of sensor entities
     gas_meter = GasMeter(entry.data, "gas",
@@ -70,7 +71,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
     async_add_entities(entities)
 
     timestamp = datetime.datetime.strptime(
-        "2023-05-02T09:00:00Z", '%Y-%m-%dT%H:%M:%SZ')
+        "2023-05-03T04:00:00Z", '%Y-%m-%dT%H:%M:%SZ')
 
     timestamp = timestamp.replace(tzinfo=pytz.UTC)
 
@@ -80,24 +81,44 @@ async def async_setup_entry(hass, entry, async_add_entities):
     metadata = {
         "has_mean": False,
         "has_sum": True,
-        "name": "test2",
+        "name": "test3",
         "source": "recorder",
         "statistic_id": "sensor.powershaper_gas",
         "unit_of_measurement": gas_meter.unit_of_measurement,
     }
 
-    statistics.append(
-        StatisticData(
-            start=timestamp,
-            state=11.05,
+    # fetch historic data
+    api_url = url_builder(
+        "gas", consent_uuid, "2023-05-02", "2023-05-02", "none")
+    historic_data = await async_fetch_data(hass, api_token, api_url)
+
+    statistics = []
+    # _LOGGER.debug(f"historic_data: {historic_data}")
+
+    # historic_data_dictionary = historic_data[0]
+    # _LOGGER.debug(f"historic_data_dict: {historic_data_dictionary}")
+
+    for data_point in historic_data:
+        _LOGGER.debug(f"data_point: {data_point} ")
+        _LOGGER.debug(f"data_point[time]: {data_point['time']} ")
+        _LOGGER.debug(f"data_point[energy_kwh]: {data_point['energy_kwh']} ")
+        timestamp = datetime.datetime.strptime(
+            data_point['time'], '%Y-%m-%dT%H:%M:%SZ')
+
+        timestamp = timestamp.replace(tzinfo=pytz.UTC)
+
+        _LOGGER.debug(f"timestamp: {timestamp} ")
+        statistics.append(
+            StatisticData(
+                start=timestamp,
+                state=data_point['energy_kwh'],
+                sum=data_point['energy_kwh'],
+                last_reset=None
+            )
         )
-    )
     _LOGGER.debug("before importing statistics")
     # Add historic data to statistics
     async_import_statistics(hass, metadata, statistics)
-    # async_add_external_statistics(
-    #     hass, metadata, statistics
-    # )
 
     _LOGGER.debug("after importing statistics")
     # Store the client and sensors in the hass data for later use
@@ -119,7 +140,7 @@ class GasMeter(SensorEntity):
 
     _attr_device_class = SensorDeviceClass.ENERGY
     _attr_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
-    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_state_class = SensorStateClass.TOTAL
 
     def __init__(self,  entry_data, sensor_type, scan_interval, consent_uuid, api_token):
         """Initialize the sensor."""
@@ -133,19 +154,16 @@ class GasMeter(SensorEntity):
     async def async_update(self):
         """Fetch the latest data from the API."""
 
-        try:
-            session = async_get_clientsession(self.hass)
-            today_date = datetime.date.today()
-            today_string = today_date.strftime('%Y-%m-%d')
-            api_url = url_builder(
-                self._sensor_type, self._consent_uuid, today_string, today_string, "none")
-            headers = {
-                'Authorization': f'Token {self._api_token}',
-                'Content-Type': 'application/json'
-            }
+        today_date = datetime.date.today()
+        today_string = today_date.strftime('%Y-%m-%d')
+        api_url = url_builder(
+            self._sensor_type, self._consent_uuid, today_string, today_string, "none")
 
-            async with session.get(api_url, headers=headers) as response:
-                response_data = await response.json()
+        try:
+            response_data = await async_fetch_data(
+                self.hass, self._api_token, api_url)
+
+            _LOGGER.debug(f"GAS response_data: {response_data}")
 
             state = response_data[-1]['energy_kwh']
             _LOGGER.debug(f"state: {state}")
@@ -154,8 +172,6 @@ class GasMeter(SensorEntity):
             self._attr_state = state
 
             _LOGGER.debug(f"self._attr_state: {self._attr_state}")
-
-            _LOGGER.debug(f"GAS response_data: {response_data}")
 
         except Exception as error:
             _LOGGER.error("Error fetching data: %s", error)
