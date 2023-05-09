@@ -45,6 +45,7 @@ async def async_fetch_data(hass, api_token, url):
 
 async def async_setup_entry(hass, entry, async_add_entities):
     """Add sensor entities for the integration."""
+
     entities = []
     api_token = entry.data['api_token']
     # fetch the consent_uuid
@@ -62,8 +63,6 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
     # Add the sensors to Home Assistant
     async_add_entities(entities, update_before_add=True)
-
-    await async_fetch_historic_data(hass, api_token, consent_uuid, gas_meter)
 
     # Store the client and sensors in the hass data for later use
     if DOMAIN not in hass.data:
@@ -105,7 +104,7 @@ async def async_aggregate_data(data_points):
     return aggregated_data_points
 
 
-async def async_fetch_historic_data(hass, api_token, consent_uuid, sensor):
+async def async_import_historic_data(hass, api_token, consent_uuid, sensor: SensorEntity):
 
     statistics = []
     current_state = 0
@@ -115,7 +114,7 @@ async def async_fetch_historic_data(hass, api_token, consent_uuid, sensor):
         "has_sum": True,
         "name": None,
         "source": "recorder",
-        "statistic_id": "sensor.powershaper_gas",
+        "statistic_id": "sensor." + sensor.sensor_type,
         "unit_of_measurement": sensor.unit_of_measurement
     }
 
@@ -167,31 +166,41 @@ class GasMeter(SensorEntity):
 
     def __init__(self,  entry_data, sensor_type,  consent_uuid, api_token, unique_id):
         """Initialize a gas sensor."""
-        self._entry_data = entry_data
-        self._sensor_type = sensor_type
-        self._attr_state = None
-        self._consent_uuid = consent_uuid
-        self._api_token = api_token
         self._attr_unique_id = unique_id
+        self.entry_data = entry_data
+        self.sensor_type = sensor_type
+        self.consent_uuid = consent_uuid
+        self.api_token = api_token
+        self.configured = False
 
     async def async_update(self):
         """Fetch the latest data from the API."""
 
         date_today = datetime.date.today()
         api_url = url_builder(
-            self._sensor_type, self._consent_uuid, date_today, "none")
+            self.sensor_type, self.consent_uuid, date_today, "none")
 
+        _LOGGER.debug(f"self.configured: {self.configured}")
         try:
+            if not self.configured:
+                # fetch historic data - occurs only once, when the integration is initially setup & configured.
+                _LOGGER.debug("Fetching historic data")
+                latest_state = await async_import_historic_data(self.hass, self.api_token, self.consent_uuid, self)
+                _LOGGER.debug("Successfully imported historic data")
+                self.configured = True
+            else:
+                _LOGGER.debug("polling")
+
             # response_data = await async_fetch_data(
             #     self.hass, self._api_token, api_url)
 
             # _LOGGER.debug(f"GAS response_data: {response_data}")
 
-            random_number = round(random.uniform(0, 2), 2)
+            # random_number = round(random.uniform(0, 2), 2)
 
-            _LOGGER.debug(f"random_number: {random_number}")
+            _LOGGER.debug(f"latest_state: {latest_state}")
             # Set the state of the sensor
-            # self._attr_state = 0.7
+            # self.state = latest_state
 
         except Exception as error:
             _LOGGER.error("Error fetching data: %s", error)
@@ -199,12 +208,7 @@ class GasMeter(SensorEntity):
     @property
     def name(self):
         """Return the name of the sensor."""
-        return f"{self._sensor_type}"
-
-    @property
-    def state(self):
-        """Return the state of the sensor."""
-        return self._attr_state
+        return f"{self.sensor_type}"
 
     @property
     def unit_of_measurement(self):
