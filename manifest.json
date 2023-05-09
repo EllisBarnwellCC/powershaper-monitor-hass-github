@@ -3,7 +3,7 @@
   "name": "powershaper",
   "codeowners": [],
   "dependencies": [],
-  "documentation": "https://github.com/home-assistant/example-custom-config/tree/master/custom_components/hello_world/",
+  "documentation": "https://github.com/MemorySounds/powershaper",
   "iot_class": "local_polling",
   "requirements": [],
   "config_flow": true,
