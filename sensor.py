@@ -14,6 +14,7 @@ from .const import (DOMAIN,
                     SENSOR_TYPE_CARBON,
                     AGGREGATE_TYPE_ALL,
                     AGGREGATE_TYPE_HOUR)
+from datetime import date
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from aiohttp.client_exceptions import ClientError
 from homeassistant.const import DEVICE_CLASS_GAS, UnitOfEnergy
@@ -61,18 +62,12 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
     # fetch the consent_uuid
     response_data = await async_fetch_data(hass, api_token, POWERSHAPER_AUTH_URL)
+
     consent_uuid = response_data[0]["consent_uuid"]
     earliest_electricity = response_data[0]['range']['earliest'][:10]
     latest_electricity = response_data[0]['range']['latest'][:10]
     earliest_gas = response_data[1]['range']['earliest'][:10]
     latest_gas = response_data[1]['range']['latest'][:10]
-
-    _LOGGER.debug(f"earliest: {earliest_gas}")
-
-    # _LOGGER.debug(f"earliest_date_str: {earliest_date_str}")
-    # _LOGGER.debug(f"latest_date_str: {latest_date_str}")
-
-    # earliest_date_str = earliest_date.strftime('%Y-%m-%d')
 
     _LOGGER.debug(
         f"Sucessfully fetched the consent_uuid from the powershaper api. Consent UUID: {consent_uuid}")
@@ -81,13 +76,13 @@ async def async_setup_entry(hass, entry, async_add_entities):
     gas_meter = GasMeter(entry.data, SENSOR_TYPE_GAS,
                          consent_uuid, api_token, earliest_gas, latest_gas)
     electricity_meter = ElectricityMeter(entry.data, SENSOR_TYPE_ELECTRICITY,
-                                         consent_uuid, api_token)
+                                         consent_uuid, api_token, earliest_electricity, latest_electricity)
     electricity_co2_meter = ElectricityCo2Emissions(entry.data, SENSOR_TYPE_CARBON,
-                                                    consent_uuid, api_token)
+                                                    consent_uuid, api_token, earliest_electricity, latest_electricity)
 
     entities.append(gas_meter)
-    # entities.append(electricity_meter)
-    # entities.append(electricity_co2_meter)
+    entities.append(electricity_meter)
+    entities.append(electricity_co2_meter)
 
     # Add the sensors to Home Assistant
     async_add_entities(entities, update_before_add=True)
@@ -132,10 +127,20 @@ async def async_aggregate_data(data_points, key_type):
     return aggregated_data_points
 
 
-async def async_import_historic_data(hass, sensor: SensorEntity, current_sum, start_date, end_date):
+async def async_data_orchestrator(hass, sensor: SensorEntity, current_sum, start_date, end_date):
 
+    _LOGGER.debug(f"Fetching data for sensor type: {sensor._sensor_type}")
+
+    api_url = url_builder(
+        sensor, sensor._consent_uuid, start_date, end_date, AGGREGATE_TYPE_HOUR)
+
+    # fetch historic data
+    historic_data = await async_fetch_data(hass, sensor._api_token, api_url)
+
+    statistics = create_statistics(sensor, historic_data)
+
+    latest_timestamp = None
     statistics = []
-
     metadata = {
         "has_mean": False,
         "has_sum": True,
@@ -145,27 +150,10 @@ async def async_import_historic_data(hass, sensor: SensorEntity, current_sum, st
         "unit_of_measurement": sensor.unit_of_measurement
     }
 
-    _LOGGER.debug(f"Fetching data for sensor type: {sensor._sensor_type}")
-
-    # currently only retrieving the carbon_kg from the electricity meter
-    if sensor._sensor_type is SENSOR_TYPE_CARBON:
-        api_url = url_builder(
-            SENSOR_TYPE_ELECTRICITY, sensor._consent_uuid, start_date, end_date, AGGREGATE_TYPE_HOUR)
-    else:
-        api_url = url_builder(
-            sensor._sensor_type, sensor._consent_uuid, start_date, end_date, AGGREGATE_TYPE_HOUR)
-
-    # fetch historic data
-    # start_fetch = time.process_time()
-    historic_data = await async_fetch_data(hass, sensor._api_token, api_url)
-    # _LOGGER.debug(f"time to fetch data: {time.process_time() - start_fetch}")
-
     if sensor._sensor_type is SENSOR_TYPE_CARBON:
         key_type = 'carbon_kg'
     else:
         key_type = 'energy_kwh'
-
-    # start = time.process_time()
 
     for data_point in historic_data:
         current_sum += data_point[key_type]
@@ -178,18 +166,80 @@ async def async_import_historic_data(hass, sensor: SensorEntity, current_sum, st
                 last_reset=None
             )
         )
-
-    # _LOGGER.debug(f"time to add statistics: {time.process_time() - start}")
+        latest_timestamp = data_point['time']
 
     # Add historic data to statistics
     async_import_statistics(hass, metadata, statistics)
     _LOGGER.debug("Successfully imported statistics")
 
-    return current_sum
+    return {'sum': current_sum, 'latest_timestamp': latest_timestamp}
 
 
-def url_builder(sensor_type: str, consent_uuid: str, start_date: str, end_date: str, aggregate: str) -> str:
+async def async_poll_new_data(hass, sensor: SensorEntity):
+
+    today = str(date.today())
+    latest_date = sensor._latest[:10]
+
+    api_url = url_builder(sensor, sensor._consent_uuid,
+                          latest_date, today, AGGREGATE_TYPE_HOUR)
+
+    response_data = await async_fetch_data(hass, sensor._api_token, api_url)
+
+    response_latest_timestamp = datetime.datetime.strptime(
+        response_data[-1]['time'], '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=pytz.UTC)
+
+    sensor_latest_timestamp = datetime.datetime.strptime(
+        sensor._latest, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=pytz.UTC)
+
+    if (response_latest_timestamp > sensor_latest_timestamp):
+        _LOGGER.debug(f"response_data: {response_data}")
+        return response_data
+
+    return []
+
+
+def create_statistics(sensor: SensorEntity, data):
+
+    if sensor._sensor_type is SENSOR_TYPE_CARBON:
+        key_type = 'carbon_kg'
+    else:
+        key_type = 'energy_kwh'
+
+    statistics = []
+    metadata = {
+        "has_mean": False,
+        "has_sum": True,
+        "name": None,
+        "source": "recorder",
+        "statistic_id": "sensor." + sensor._sensor_type,
+        "unit_of_measurement": sensor.unit_of_measurement
+    }
+
+    for data_point in data:
+        current_sum += data_point[key_type]
+        statistics.append(
+            StatisticData(
+                start=datetime.datetime.strptime(
+                    data_point['time'], '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=pytz.UTC),
+                state=data_point[key_type],
+                sum=current_sum,
+                last_reset=None
+            )
+        )
+        latest_timestamp = data_point['time']
+
+    return {'statistics': statistics, 'metadata': metadata}
+
+
+def url_builder(sensor: SensorEntity, consent_uuid: str, start_date: str, end_date: str, aggregate: str) -> str:
     """Build a url which is used to fetch the latest data from Powershaper for a given sensor type: gas or electricity."""
+
+    # currently only retrieving the carbon_kg from the electricity meter
+    if sensor._sensor_type is SENSOR_TYPE_CARBON:
+        sensor_type = SENSOR_TYPE_ELECTRICITY
+    else:
+        sensor_type = sensor._sensor_type
+
     return POWERSHAPER_BASE_SENSOR_URL+consent_uuid+"/"+sensor_type+"?start="+start_date+"&end="+end_date+"&aggregate="+aggregate+"&tz=UTC"
 
 
@@ -200,7 +250,7 @@ class GasMeter(SensorEntity):
     _attr_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
     _attr_state_class = SensorStateClass.TOTAL_INCREASING
 
-    def __init__(self, entry_data, sensor_type,  consent_uuid, api_token, earliest, latest):
+    def __init__(self, entry_data, sensor_type, consent_uuid, api_token, earliest, latest):
         """Initialize a gas sensor."""
         self._attr_unique_id = "powershaper"+sensor_type+"123"
         self._state = None
@@ -210,39 +260,26 @@ class GasMeter(SensorEntity):
         self._api_token = api_token
         self._sum = 0
         self._configured = False
-        self._last_date_fetched = None
         self._earliest = earliest
         self._latest = latest
-        self._last_updated = None
 
     async def async_update(self):
-        """Fetch the latest data from the API."""
+        """Fetches historic data upon initialization, with subsequent polls every hour for new data from the Powershaper API."""
         try:
-
             if not self._configured:
-                # fetch historic data
-
-                # test_date_start = datetime.datetime.strptime(
-                #     '2023-01-01', '%Y-%m-%d')
-                # self._last_updated = datetime.datetime.strptime(
-                #     '2023-05-15', '%Y-%m-%d')
-
-                self._sum = await async_import_historic_data(self.hass, self, 0, self._earliest, self._latest)
-                _LOGGER.debug("Successfully imported gas data")
-                _LOGGER.debug(f"historic self._sum: {self._sum}")
+                # fetch historic data upon initialization
+                response = await async_data_orchestrator(self.hass, self, self._sum, self._earliest, self._latest)
+                self._sum = response['sum']
+                self._latest = response['latest_timestamp']
+                _LOGGER.debug("Successfully imported historic gas data")
                 self._configured = True
             else:
                 _LOGGER.debug("polling gas")
-                self._sum = await async_import_historic_data(self.hass, self, self._sum, self._last_updated, self._latest)
-                self._last_updated = self._latest
-                _LOGGER.debug(f"self._sum: {self._sum}")
-
-            # random_number = round(random.uniform(0, 2), 2)
-            # Set the state of the sensor
-
-            # _LOGGER.debug(f"current_state (gas): {current_state}")
-            # self._state = 0
-
+                response = await async_poll_new_data(self.hass, self)
+                if (response):
+                    _LOGGER.debug("new data is available")
+                else:
+                    _LOGGER.debug("no new data available")
         except Exception as error:
             _LOGGER.error("Error fetching data: %s", error)
 
@@ -279,24 +316,37 @@ class ElectricityMeter(SensorEntity):
     _attr_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
     _attr_state_class = SensorStateClass.TOTAL_INCREASING
 
-    def __init__(self, entry_data, sensor_type,  consent_uuid, api_token):
-        """Initialize a gas sensor."""
+    def __init__(self, entry_data, sensor_type, consent_uuid, api_token, earliest, latest):
+        """Initialize a Electricity sensor."""
         self._attr_unique_id = "powershaper"+sensor_type+"123"
         self._state = None
         self._entry_data = entry_data
         self._sensor_type = sensor_type
         self._consent_uuid = consent_uuid
         self._api_token = api_token
+        self._sum = 0
+        self._configured = False
+        self._earliest = earliest
+        self._latest = latest
 
     async def async_update(self):
-        """Fetch the latest data from the API."""
+        """Fetches historic data upon initialization, with subsequent polls every hour for new data from the Powershaper API."""
         try:
-            _LOGGER.debug("polling electricity meter")
-            current_state = await async_import_historic_data(self.hass, self._api_token, self._consent_uuid, self, 0)
-            _LOGGER.debug("Successfully imported electricity data")
-
-            _LOGGER.debug(f"current_state (elec): {current_state}")
-            # self._state = 0
+            if not self._configured:
+                # fetch historic data upon initialization
+                response = await async_data_orchestrator(self.hass, self, self._sum, self._earliest, self._latest)
+                self._sum = response['sum']
+                self._latest = response['latest_timestamp']
+                _LOGGER.debug(
+                    "Successfully imported historic electricity data")
+                self._configured = True
+            else:
+                _LOGGER.debug("polling electricity")
+                response = await async_poll_new_data(self.hass, self)
+                if (response):
+                    _LOGGER.debug("new data is available")
+                else:
+                    _LOGGER.debug("no new data available")
         except Exception as error:
             _LOGGER.error("Error fetching data: %s", error)
 
@@ -333,24 +383,37 @@ class ElectricityCo2Emissions(SensorEntity):
     _attr_unit_of_measurement = "KG"
     _attr_state_class = SensorStateClass.TOTAL_INCREASING
 
-    def __init__(self, entry_data, sensor_type,  consent_uuid, api_token):
-        """Initialize a gas sensor."""
+    def __init__(self, entry_data, sensor_type, consent_uuid, api_token, earliest, latest):
+        """Initialize a ElectricityCo2Emissions sensor."""
         self._attr_unique_id = "powershaper"+sensor_type+"123"
         self._state = None
         self._entry_data = entry_data
         self._sensor_type = sensor_type
         self._consent_uuid = consent_uuid
         self._api_token = api_token
+        self._sum = 0
+        self._configured = False
+        self._earliest = earliest
+        self._latest = latest
 
     async def async_update(self):
-        """Fetch the latest data from the API."""
+        """Fetches historic data upon initialization, with subsequent polls every hour for new data from the Powershaper API."""
         try:
-            _LOGGER.debug("polling carbon co2 endpoint")
-            current_state = await async_import_historic_data(self.hass, self._api_token, self._consent_uuid, self, 0)
-            _LOGGER.debug("Successfully imported co2 data")
-
-            _LOGGER.debug(f"current_state (co)): {current_state}")
-            # self._state = 0
+            if not self._configured:
+                # fetch historic data upon initialization
+                response = await async_data_orchestrator(self.hass, self, self._sum, self._earliest, self._latest)
+                self._sum = response['sum']
+                self._latest = response['latest_timestamp']
+                _LOGGER.debug(
+                    "Successfully imported historic ElectricityCo2Emissions data")
+                self._configured = True
+            else:
+                _LOGGER.debug("polling ElectricityCo2Emissions")
+                response = await async_poll_new_data(self.hass, self)
+                if (response):
+                    _LOGGER.debug("new data is available")
+                else:
+                    _LOGGER.debug("no new data available")
         except Exception as error:
             _LOGGER.error("Error fetching data: %s", error)
 
