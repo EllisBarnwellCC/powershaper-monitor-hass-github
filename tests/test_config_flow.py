@@ -1,10 +1,8 @@
 from unittest import mock
 from unittest.mock import AsyncMock, patch
 from ..const import DOMAIN
-from homeassistant.const import CONF_ACCESS_TOKEN, CONF_NAME, CONF_PATH
 from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import data_entry_flow
-import voluptuous as vol
 
 import pytest
 from .. import config_flow

@@ -1,5 +1,6 @@
 import logging
 import pytz
+from typing import Any
 from datetime import datetime, timedelta, date
 from .const import (DOMAIN,
                     POWERSHAPER_AUTH_URL,
@@ -11,7 +12,8 @@ from .const import (DOMAIN,
                     SENSOR_TYPE_ELECTRICITY,
                     SENSOR_TYPE_CARBON,
                     AGGREGATE_TYPE_HOUR,
-                    DATA_REFRESH_INTERVAL)
+                    DATA_REFRESH_INTERVAL,
+                    MEASUREMENT_UNIT_KG)
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from aiohttp.client_exceptions import ClientError
 from homeassistant.const import UnitOfEnergy
@@ -30,7 +32,7 @@ SCAN_INTERVAL = timedelta(seconds=3600)
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_setup_entry(hass, entry, async_add_entities):
+async def async_setup_entry(hass, entry, async_add_entities) -> bool:
     """Add sensor entities for the integration."""
 
     entities = []
@@ -69,7 +71,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
     return True
 
 
-async def async_fetch_data(hass, api_token, url):
+async def async_fetch_data(hass, api_token, url) -> dict[str, Any]:
     """Fetch data from Powershaper's API"""
 
     session = async_get_clientsession(hass)
@@ -100,7 +102,7 @@ def url_builder(sensor: SensorEntity, consent_uuid: str, start_date: str, end_da
     return POWERSHAPER_BASE_SENSOR_URL+consent_uuid+"/"+sensor_type+"?start="+start_date+"&end="+end_date+"&aggregate="+aggregate+"&tz=UTC"
 
 
-async def async_data_orchestrator(hass, sensor: SensorEntity, current_sum, start_date, end_date):
+async def async_data_orchestrator(hass, sensor: SensorEntity, current_sum, start_date, end_date) -> dict[str, Any]:
 
     latest_timestamp = None
     statistics = []
@@ -143,7 +145,7 @@ async def async_data_orchestrator(hass, sensor: SensorEntity, current_sum, start
     return {'sum': current_sum, 'latest_timestamp': latest_timestamp}
 
 
-async def async_poll_new_data(hass, sensor: SensorEntity):
+async def async_poll_new_data(hass, sensor: SensorEntity) -> list[Any]:
 
     today = str(date.today())
     latest_date = sensor._latest_date
@@ -178,7 +180,7 @@ async def async_poll_new_data(hass, sensor: SensorEntity):
     return []
 
 
-async def import_new_data(hass, sensor: SensorEntity, data, current_sum):
+async def import_new_data(hass, sensor: SensorEntity, data, current_sum) -> dict[str, Any]:
     if sensor._sensor_type is SENSOR_TYPE_CARBON:
         key_type = 'carbon_kg'
     else:
@@ -212,7 +214,7 @@ async def import_new_data(hass, sensor: SensorEntity, data, current_sum):
     return {'sum': current_sum, 'latest_timestamp': latest_timestamp}
 
 
-def historic_refresh(last_refresh_date):
+def historic_refresh(last_refresh_date) -> bool:
     """A check whether it is time to do a historic data refresh"""
     if (datetime.now() - last_refresh_date >= timedelta(days=DATA_REFRESH_INTERVAL)):
         return True
@@ -228,7 +230,7 @@ class GasMeter(SensorEntity):
 
     def __init__(self, entry_data, sensor_type, consent_uuid, api_token, earliest_date, latest_date):
         """Initialize a gas sensor."""
-        self._attr_unique_id = "powershaper"+sensor_type+"123"
+        self._attr_unique_id = DOMAIN+sensor_type+earliest_date
         self._state = None
         self._entry_data = entry_data
         self._sensor_type = sensor_type
@@ -307,7 +309,7 @@ class ElectricityMeter(SensorEntity):
 
     def __init__(self, entry_data, sensor_type, consent_uuid, api_token, earliest_date, latest_date):
         """Initialize a Electricity sensor."""
-        self._attr_unique_id = "powershaper"+sensor_type+"123"
+        self._attr_unique_id = DOMAIN+sensor_type+earliest_date
         self._state = None
         self._entry_data = entry_data
         self._sensor_type = sensor_type
@@ -381,12 +383,12 @@ class ElectricityCo2Emissions(SensorEntity):
     """Representation of an electricity carbon sensor."""
 
     _attr_device_class = SensorDeviceClass.ENERGY
-    _attr_unit_of_measurement = "kg"
+    _attr_unit_of_measurement = MEASUREMENT_UNIT_KG
     _attr_state_class = SensorStateClass.TOTAL_INCREASING
 
     def __init__(self, entry_data, sensor_type, consent_uuid, api_token, earliest_date, latest_date):
         """Initialize a ElectricityCo2Emissions sensor."""
-        self._attr_unique_id = "powershaper"+sensor_type+"123"
+        self._attr_unique_id = DOMAIN+sensor_type+earliest_date
         self._state = None
         self._entry_data = entry_data
         self._sensor_type = sensor_type
