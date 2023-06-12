@@ -33,7 +33,7 @@ async def async_validate_api_token(hass: HomeAssistant, user_input: dict[str, An
     }
 
     async with session.get(api_url, headers=headers) as response:
-        response_data = await response.json()
+        await response.json()
 
     if response.status == 403:
         _LOGGER.debug(
@@ -49,9 +49,6 @@ async def async_validate_api_token(hass: HomeAssistant, user_input: dict[str, An
         _LOGGER.debug(
             f"Error occurred whilst fetching Powershaper API, response status: {response.status}")
         raise ClientError
-
-    _LOGGER.debug(
-        f"Sucessfully fetched the consent_uuid from the powershaper api. Consent UUID: {response_data[0]['consent_uuid']}")
 
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
