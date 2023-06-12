@@ -1,6 +1,6 @@
 {
   "domain": "powershaper",
-  "name": "powershaper",
+  "name": "powershaper-monitor",
   "codeowners": [],
   "dependencies": [],
   "documentation": "https://github.com/MemorySounds/powershaper",
