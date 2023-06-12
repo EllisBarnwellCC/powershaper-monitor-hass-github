@@ -11,7 +11,7 @@ The first two are available to be selected within the energy dashboard. (Future 
 
 ## Setting Up
 
-To set-up the integration, please copy the whole of the _powershaper_ directory into your _custom_components_ directory - there are future plans to have this integration go through the process of having it verified by HA.
+To set-up the integration, please copy the whole of the this project into your _custom_components_ directory - there are future plans to have this integration go through the process of having it verified by HA.
 
 Once added, restart your HA instance and you should be able to search for 'powershaper-monitor' within HA.
 Import your api_token from your Powershaper service and click **submit**
