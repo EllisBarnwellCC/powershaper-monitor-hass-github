@@ -16,7 +16,7 @@ from .const import DOMAIN
 import logging
 
 # The domain of your component. Should be equal to the name of your component.
-DOMAIN = "powershaper"
+DOMAIN = "powershaper_monitor" # TODO: test I can get rid of this because it's pulled in from .const
 
 _LOGGER = logging.getLogger(__name__)
 

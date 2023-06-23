@@ -4,7 +4,7 @@ Constants for the Powershaper integration.
 Authored by Robert Sahakyan
 """
 
-DOMAIN = "powershaper"
+DOMAIN = "powershaper_monitor"
 
 API_TOKEN_LENGTH = 40
 AGGREGATE_TYPE_ALL = "all"

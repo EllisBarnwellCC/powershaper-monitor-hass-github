@@ -1,9 +1,9 @@
 {
-  "domain": "powershaper",
-  "name": "powershaper-monitor",
+  "domain": "powershaper_monitor",
+  "name": "Powershaper Monitor",
   "codeowners": [],
   "dependencies": [],
-  "documentation": "https://github.com/MemorySounds/powershaper",
+  "documentation": "https://gitlab.com/carboncoop/powershaper-monitor-hass",
   "iot_class": "local_polling",
   "requirements": [],
   "config_flow": true,

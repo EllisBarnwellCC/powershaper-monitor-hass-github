@@ -1,3 +1,9 @@
+"""
+sensor.py - setup the home assistant sensors for pulling metering data from powershaper
+
+Authored by Robert Sahakyan
+"""
+
 from collections import namedtuple
 import logging
 import pytz
