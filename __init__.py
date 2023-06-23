@@ -1,4 +1,11 @@
-"""The Powershaper Integration"""
+"""
+The Powershaper monitor Integration
+
+Used for pulling meter data from the powershaper monitor API and adding as a sensor
+using the hass history API
+
+Authored by Robert Sahakyan
+"""
 from __future__ import annotations
 from homeassistant.helpers.typing import ConfigType
 

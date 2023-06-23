@@ -1,4 +1,8 @@
-"""Constants for the Powershaper integration."""
+"""
+Constants for the Powershaper integration.
+
+Authored by Robert Sahakyan
+"""
 
 DOMAIN = "powershaper"
 

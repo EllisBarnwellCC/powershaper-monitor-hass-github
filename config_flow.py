@@ -1,4 +1,8 @@
-"""Config flow for Powershaper integration."""
+"""
+Config flow for Powershaper integration.
+
+Authored by Robert Sahakyan
+"""
 from typing import Any
 from homeassistant import config_entries, exceptions
 from homeassistant.core import HomeAssistant
