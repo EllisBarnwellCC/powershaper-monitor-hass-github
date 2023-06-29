@@ -31,6 +31,7 @@ from homeassistant.components.sensor import (
     SensorEntity,
     SensorStateClass,
 )
+from cofycloud import aysnc_push_half_hourly_data
 
 SCAN_INTERVAL = timedelta(seconds=3600)
 
@@ -187,8 +188,11 @@ async def async_import_data(hass, sensor: SensorEntity, data, current_sum) -> Na
             )
         )
         latest_timestamp = data_point['time']
+        
+        await aysnc_push_half_hourly_data(data_point[key_type], data_point['time'])
 
     async_import_statistics(hass, metadata, statistics)
+    
 
     ReturnData = namedtuple('ReturnData', ['sum', 'latest_timestamp'])
     return ReturnData(current_sum, latest_timestamp)
