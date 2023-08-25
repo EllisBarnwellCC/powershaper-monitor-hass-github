@@ -31,7 +31,7 @@ from homeassistant.components.sensor import (
     SensorEntity,
     SensorStateClass,
 )
-from cofycloud import aysnc_push_half_hourly_data
+from .cofycloud import aysnc_push_half_hourly_data
 
 SCAN_INTERVAL = timedelta(seconds=3600)
 
@@ -40,30 +40,44 @@ _LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(hass, entry, async_add_entities) -> bool:
+    _LOGGER.debug("called asynt_setup_entry")
+
     """Add sensor entities for the integration."""
 
     entities = []
     api_token = entry.data['api_token']
-
+    push_to_cofycloud = entry.data['cofycloud_push']
+    balena_uuid = entry.data['balena_uuid']
+    balena_friendly_name = entry.data['balena_friendly_name']
+                                  
     # fetch auth data from Powershaper's API
     response_data = await async_fetch_data(hass, api_token, POWERSHAPER_AUTH_URL)
 
-    consent_uuid = response_data[0]["consent_uuid"]
-    earliest_electricity_date = response_data[0]['range']['earliest'][:10]
-    latest_electricity_date = response_data[0]['range']['latest'][:10]
-    earliest_gas_date = response_data[1]['range']['earliest'][:10]
-    latest_gas_date = response_data[1]['range']['latest'][:10]
+    _LOGGER.debug("auth data response: " + str(response_data))
 
-    # Create sensor entities
-    gas_meter = GasMeter(entry.data, SENSOR_TYPE_GAS,
-                         consent_uuid, api_token, earliest_gas_date, latest_gas_date)
-    electricity_meter = ElectricityMeter(entry.data, SENSOR_TYPE_ELECTRICITY,
-                                         consent_uuid, api_token, earliest_electricity_date, latest_electricity_date)
-    electricity_co2_meter = ElectricityCo2Emissions(entry.data, SENSOR_TYPE_CARBON,
-                                                    consent_uuid, api_token, earliest_electricity_date, latest_electricity_date)
-    entities.append(gas_meter)
-    entities.append(electricity_meter)
-    entities.append(electricity_co2_meter)
+    if len(response_data) == 0:
+        _LOGGER.error("got empty response from " + POWERSHAPER_AUTH_URL)
+        return
+ 
+    consent_uuid = response_data[0]["consent_uuid"]
+
+    if len(response_data) >= 1 and response_data[0]["type"] == "electricity":
+        earliest_electricity_date = response_data[0]["range"]["earliest"][:10]
+        latest_electricity_date = response_data[0]["range"]["latest"][:10]
+        electricity_meter = ElectricityMeter(entry.data,
+                                         consent_uuid, api_token, earliest_electricity_date, latest_electricity_date, push_to_cofycloud, balena_uuid, balena_friendly_name)
+        electricity_co2_meter = ElectricityCo2Emissions(entry.data,
+                                                    consent_uuid, api_token, earliest_electricity_date, latest_electricity_date, push_to_cofycloud, balena_uuid, balena_friendly_name)
+        entities.append(electricity_meter)
+        entities.append(electricity_co2_meter)
+
+    if len(response_data) >= 2 and response_data[1]["type"] == "gas":
+
+        earliest_gas_date = response_data[1]["range"]["earliest"][:10]
+        latest_gas_date = response_data[1]["range"]["latest"][:10]
+        gas_meter = GasMeter(entry.data,
+                         consent_uuid, api_token, earliest_gas_date, latest_gas_date, push_to_cofycloud, balena_uuid, balena_friendly_name)
+        entities.append(gas_meter)
 
     # Add the sensors to Home Assistant
     async_add_entities(entities, update_before_add=True)
@@ -189,7 +203,8 @@ async def async_import_data(hass, sensor: SensorEntity, data, current_sum) -> Na
         )
         latest_timestamp = data_point['time']
         
-        await aysnc_push_half_hourly_data(data_point[key_type], data_point['time'])
+        if sensor.push_to_cofycloud:
+            await aysnc_push_half_hourly_data(data_point[key_type], data_point['time'], sensor)
 
     async_import_statistics(hass, metadata, statistics)
     
@@ -204,19 +219,29 @@ def historic_refresh(last_refresh_date) -> bool:
         return True
     return False
 
+class Meter(SensorEntity):
 
-class GasMeter(SensorEntity):
+    def __init__(self, push_to_cofycloud, balena_uuid, balena_friendly_name):
+        """Initialize a gas sensor."""
+        self.push_to_cofycloud = push_to_cofycloud
+        self.balena_uuid = balena_uuid
+        self.balena_friendly_name = balena_friendly_name
+        self.cofycloud_token = ""
+        self.cofycloud_assigned_queue_url = ""
+        self.cofycloud_authorization_header_value = ""
+
+class GasMeter(Meter):
     """Representation of a gas sensor."""
 
     _attr_device_class = SensorDeviceClass.ENERGY
     _attr_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
     _attr_state_class = SensorStateClass.TOTAL_INCREASING
 
-    def __init__(self, entry_data, sensor_type, consent_uuid, api_token, earliest_date, latest_date):
+    def __init__(self, entry_data, consent_uuid, api_token, earliest_date, latest_date, push_to_cofycloud, balena_uuid, balena_friendly_name):
         """Initialize a gas sensor."""
-        self._attr_unique_id = DOMAIN+sensor_type+earliest_date
+        self.sensor_type = SENSOR_TYPE_GAS
+        self._attr_unique_id = DOMAIN+self.sensor_type+earliest_date
         self.entry_data = entry_data
-        self.sensor_type = sensor_type
         self.consent_uuid = consent_uuid
         self.api_token = api_token
         self.sum = 0
@@ -225,6 +250,7 @@ class GasMeter(SensorEntity):
         self.latest_date = latest_date
         self.latest_timestamp = None
         self.last_refresh_date = datetime.now()
+        super().__init__(push_to_cofycloud, balena_uuid, balena_friendly_name)
 
     async def async_update(self):
         """Fetches historic data upon initialization, with subsequent polls every hour for new data from the Powershaper API."""
@@ -275,18 +301,18 @@ class GasMeter(SensorEntity):
         return self._attr_device_class
 
 
-class ElectricityMeter(SensorEntity):
+class ElectricityMeter(Meter):
     """Representation of an electricity sensor."""
 
     _attr_device_class = SensorDeviceClass.ENERGY
     _attr_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
     _attr_state_class = SensorStateClass.TOTAL_INCREASING
 
-    def __init__(self, entry_data, sensor_type, consent_uuid, api_token, earliest_date, latest_date):
+    def __init__(self, entry_data, consent_uuid, api_token, earliest_date, latest_date, push_to_cofycloud, balena_uuid, balena_friendly_name):
         """Initialize a Electricity sensor."""
-        self._attr_unique_id = DOMAIN+sensor_type+earliest_date
+        self.sensor_type = SENSOR_TYPE_ELECTRICITY
+        self._attr_unique_id = DOMAIN+self.sensor_type+earliest_date
         self.entry_data = entry_data
-        self.sensor_type = sensor_type
         self.consent_uuid = consent_uuid
         self.api_token = api_token
         self.sum = 0
@@ -295,6 +321,7 @@ class ElectricityMeter(SensorEntity):
         self.latest_date = latest_date
         self.latest_timestamp = None
         self.last_refresh_date = datetime.now()
+        super().__init__(push_to_cofycloud, balena_uuid, balena_friendly_name)
 
     async def async_update(self):
         """Fetches historic data upon initialization, with subsequent polls every hour for new data from the Powershaper API."""
@@ -344,18 +371,18 @@ class ElectricityMeter(SensorEntity):
         return self._attr_device_class
 
 
-class ElectricityCo2Emissions(SensorEntity):
+class ElectricityCo2Emissions(Meter):
     """Representation of an electricity carbon sensor."""
 
     _attr_device_class = SensorDeviceClass.ENERGY
     _attr_unit_of_measurement = MEASUREMENT_UNIT_KG
     _attr_state_class = SensorStateClass.TOTAL_INCREASING
 
-    def __init__(self, entry_data, sensor_type, consent_uuid, api_token, earliest_date, latest_date):
+    def __init__(self, entry_data, consent_uuid, api_token, earliest_date, latest_date, push_to_cofycloud, balena_uuid, balena_friendly_name):
         """Initialize a ElectricityCo2Emissions sensor."""
-        self._attr_unique_id = DOMAIN+sensor_type+earliest_date
+        self.sensor_type = SENSOR_TYPE_CARBON
+        self._attr_unique_id = DOMAIN+self.sensor_type+earliest_date
         self.entry_data = entry_data
-        self.sensor_type = sensor_type
         self.consent_uuid = consent_uuid
         self.api_token = api_token
         self.sum = 0
@@ -364,6 +391,7 @@ class ElectricityCo2Emissions(SensorEntity):
         self.latest_date = latest_date
         self.latest_timestamp = None
         self.last_refresh_date = datetime.now()
+        super().__init__(push_to_cofycloud, balena_uuid, balena_friendly_name)
 
     async def async_update(self):
         """Fetches historic data upon initialization, with subsequent polls every hour for new data from the Powershaper API."""

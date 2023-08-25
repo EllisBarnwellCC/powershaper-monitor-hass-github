@@ -23,5 +23,7 @@ SENSOR_TYPE_CARBON = "elec_carbon"
 
 MEASUREMENT_UNIT_KG = "kg"
 
+COFYCLOUD_TOKEN_URL = "https://dps.cofybox.io/api/v1/devices"
+
 # configurable
 DATA_REFRESH_INTERVAL = 7

@@ -5,7 +5,10 @@
                 "title": "PowerShaper Configuration",
                 "description": "Please enter your API token",
                 "data": { 
-                    "api_token": "API token"
+                    "api_token": "API token",
+                    "cofycloud_push": "Push to cofycloud",
+                    "balena_uuid": "Balena UUID",
+                    "balena_friendly_name": "Balena friendly name"
                 }
             }
         },

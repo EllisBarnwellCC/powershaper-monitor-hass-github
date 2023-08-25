@@ -11,11 +11,13 @@ from .const import (DOMAIN, API_TOKEN_LENGTH, POWERSHAPER_AUTH_URL)
 from aiohttp.client_exceptions import ClientError
 from aiohttp.web import HTTPForbidden
 
+import os
 import logging
 import voluptuous as vol
 
 
-DATA_SCHEMA = {vol.Required("api_token"): str}
+DATA_SCHEMA = {vol.Required("api_token"): str, vol.Required("cofycloud_push"): bool,
+               vol.Optional("balena_uuid", default=os.getenv('BALENA_DEVICE_UUID')): str, vol.Optional("balena_friendly_name", default=os.getenv('BALENA_DEVICE_NAME_AT_INIT')): str}
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -59,7 +61,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for the PowerShaper."""
 
     async def async_step_user(self, user_input=None):
-
+        
         errors = {}
 
         if user_input is not None:
