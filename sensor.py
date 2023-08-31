@@ -8,7 +8,8 @@ from collections import namedtuple
 import logging
 import pytz
 from typing import Any, NamedTuple
-from datetime import datetime, timedelta, date
+import datetime
+import time
 from .const import (DOMAIN,
                     POWERSHAPER_AUTH_URL,
                     POWERSHAPER_BASE_SENSOR_URL,
@@ -33,14 +34,14 @@ from homeassistant.components.sensor import (
 )
 from .cofycloud import aysnc_push_half_hourly_data
 
-SCAN_INTERVAL = timedelta(seconds=3600)
+SCAN_INTERVAL = datetime.timedelta(seconds=3600)
 
 
 _LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(hass, entry, async_add_entities) -> bool:
-    _LOGGER.debug("called asynt_setup_entry")
+    _LOGGER.debug("called async_setup_entry")
 
     """Add sensor entities for the integration."""
 
@@ -105,12 +106,19 @@ async def async_fetch_data(hass, api_token, url) -> dict[str, Any]:
         async with session.get(url, headers=headers) as response:
             response_data = await response.json()
     except ClientError as ex:
-        _LOGGER.error(
-            f"Client error while fetching data from Powershaper API: {ex} | response status: {response.status}")
+        try:
+            _LOGGER.error(
+                f"Client error while fetching data from Powershaper API: {ex} | response status: {response.status}")
+        except NameError:
+            _LOGGER.error(
+                f"Client error while fetching data from Powershaper API: {ex}")
     except Exception as ex:
-        _LOGGER.error(
-            f"Unexpected exception while fetching data from the Powershaper API: {ex} | response status: {response.status}")
-
+        try:
+            _LOGGER.error(
+                f"Unexpected exception while fetching data from the Powershaper API: {ex} | response status: {response.status}")
+        except NameError:
+            _LOGGER.error(
+                f"Unexpected exception while fetching data from the Powershaper API: {ex}")
     return response_data
 
 
@@ -141,7 +149,7 @@ async def async_poll_new_data(hass, sensor: SensorEntity) -> list[Any]:
 
     Returns a list of data or an empty list if no new data is available.
     """
-    today = str(date.today())
+    today = str(datetime.date.today())
     latest_date = sensor.latest_date
 
     api_url = url_builder(sensor, sensor.consent_uuid,
@@ -149,10 +157,10 @@ async def async_poll_new_data(hass, sensor: SensorEntity) -> list[Any]:
 
     response_data = await async_fetch_data(hass, sensor.api_token, api_url)
 
-    response_latest_timestamp = datetime.strptime(
+    response_latest_timestamp = datetime.datetime.strptime(
         response_data[-1]['time'], '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=pytz.UTC)
 
-    sensor_latest_timestamp = datetime.strptime(
+    sensor_latest_timestamp = datetime.datetime.strptime(
         sensor.latest_timestamp, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=pytz.UTC)
 
     new_data = []
@@ -162,7 +170,7 @@ async def async_poll_new_data(hass, sensor: SensorEntity) -> list[Any]:
     if (response_latest_timestamp > sensor_latest_timestamp):
         for data in response_data:
 
-            temp_timestamp = datetime.strptime(
+            temp_timestamp = datetime.datetime.strptime(
                 data['time'], '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=pytz.UTC)
 
             if (temp_timestamp > sensor_latest_timestamp):
@@ -191,11 +199,13 @@ async def async_import_data(hass, sensor: SensorEntity, data, current_sum) -> Na
     }
 
     for data_point in data:
+        _LOGGER.debug("Adding data point " + str(data_point))
         current_sum += data_point[key_type]
+        dateTime = datetime.datetime.strptime(
+                    data_point['time'], '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=pytz.UTC)
         statistics.append(
             StatisticData(
-                start=datetime.strptime(
-                    data_point['time'], '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=pytz.UTC),
+                start=dateTime,
                 state=data_point[key_type],
                 sum=current_sum,
                 last_reset=None
@@ -203,8 +213,8 @@ async def async_import_data(hass, sensor: SensorEntity, data, current_sum) -> Na
         )
         latest_timestamp = data_point['time']
         
-        if sensor.push_to_cofycloud:
-            await aysnc_push_half_hourly_data(data_point[key_type], data_point['time'], sensor)
+        if sensor.push_to_cofycloud and sensor.sensor_type is SENSOR_TYPE_ELECTRICITY:
+            await aysnc_push_half_hourly_data(data_point[key_type], time.mktime(dateTime.timetuple()), sensor)
 
     async_import_statistics(hass, metadata, statistics)
     
@@ -215,7 +225,7 @@ async def async_import_data(hass, sensor: SensorEntity, data, current_sum) -> Na
 
 def historic_refresh(last_refresh_date) -> bool:
     """A check whether it is time to do a historic data refresh"""
-    if (datetime.now() - last_refresh_date >= timedelta(days=DATA_REFRESH_INTERVAL)):
+    if (datetime.datetime.now() - last_refresh_date >= datetime.timedelta(days=DATA_REFRESH_INTERVAL)):
         return True
     return False
 
@@ -249,7 +259,7 @@ class GasMeter(Meter):
         self.earliest_date = earliest_date
         self.latest_date = latest_date
         self.latest_timestamp = None
-        self.last_refresh_date = datetime.now()
+        self.last_refresh_date = datetime.datetime.now()
         super().__init__(push_to_cofycloud, balena_uuid, balena_friendly_name)
 
     async def async_update(self):
@@ -261,7 +271,7 @@ class GasMeter(Meter):
                 self.sum = response.sum
                 self.latest_timestamp = response.latest_timestamp
                 self.latest_date = response.latest_timestamp[:10]
-                self.last_data_refesh = datetime.now()
+                self.last_data_refesh = datetime.datetime.now()
                 self.initialized = True
                 _LOGGER.debug(
                     f"Successfully imported historic {self.sensor_type} data")
@@ -320,7 +330,7 @@ class ElectricityMeter(Meter):
         self.earliest_date = earliest_date
         self.latest_date = latest_date
         self.latest_timestamp = None
-        self.last_refresh_date = datetime.now()
+        self.last_refresh_date = datetime.datetime.now()
         super().__init__(push_to_cofycloud, balena_uuid, balena_friendly_name)
 
     async def async_update(self):
@@ -390,7 +400,7 @@ class ElectricityCo2Emissions(Meter):
         self.earliest_date = earliest_date
         self.latest_date = latest_date
         self.latest_timestamp = None
-        self.last_refresh_date = datetime.now()
+        self.last_refresh_date = datetime.datetime.now()
         super().__init__(push_to_cofycloud, balena_uuid, balena_friendly_name)
 
     async def async_update(self):
