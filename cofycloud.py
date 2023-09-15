@@ -25,8 +25,8 @@ async def aysnc_push_half_hourly_data(value: float, timestamp, sensor):
 
     payload = CofyCloudDQPayload(
         deviceId=sensor.balena_uuid,
-        sensorId="test_powershaper_monitor",
-        sensorName="Test powershaper monitor data",
+        sensorId="powershaper_monitor",
+        sensorName="powershaper.total_energy_consumed",
         metric="GridElectricityImport",
         metricKind="delta",
         unit="kWh",
@@ -63,12 +63,6 @@ def get_cofycloud_token(sensor):
                 _LOGGER.debug(f"Response: {r.json()}")
                 _LOGGER.debug(f"Queue: " + sensor.cofycloud_assigned_queue_url)
                 _LOGGER.debug(f"Auth header: " + sensor.cofycloud_authorization_header_value)
-
-
-## TODO: push the actual data! Should be straightforward now but needs testing
-## Also, should change things like text in setup so it's a bit obvious that we need the powershaper monitor API key
-
-
 
 def post_data_to_cofycloud_data_queue(
     sensor, payload: str
