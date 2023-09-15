@@ -181,7 +181,7 @@ async def async_poll_new_data(hass, sensor: SensorEntity) -> list[Any]:
     return []
 
 
-async def async_import_data(hass, sensor: SensorEntity, data, current_sum) -> NamedTuple:
+async def async_import_data(hass, sensor: SensorEntity, data, current_sum, cofycloud_push=False) -> NamedTuple:
     """Imports data into Home Assistant's database using the Statistics API."""
     if sensor.sensor_type is SENSOR_TYPE_CARBON:
         key_type = 'carbon_kg'
@@ -213,7 +213,8 @@ async def async_import_data(hass, sensor: SensorEntity, data, current_sum) -> Na
         )
         latest_timestamp = data_point['time']
         
-        if sensor.push_to_cofycloud and sensor.sensor_type is SENSOR_TYPE_ELECTRICITY:
+        # Only send if sensor has been configured to send and its Electricity data.
+        if cofycloud_push and sensor.push_to_cofycloud and sensor.sensor_type is SENSOR_TYPE_ELECTRICITY:
             await aysnc_push_half_hourly_data(data_point[key_type], time.mktime(dateTime.timetuple()), sensor)
 
     async_import_statistics(hass, metadata, statistics)
@@ -338,7 +339,7 @@ class ElectricityMeter(Meter):
         try:
             if not self.initialized or historic_refresh(self.last_refresh_date):
                 historic_data = await async_fetch_historic_data(self.hass, self)
-                response = await async_import_data(self.hass, self, historic_data, 0)
+                response = await async_import_data(self.hass, self, historic_data, 0, not historic_refresh(self.last_refresh_date))
                 self.sum = response.sum
                 self.latest_timestamp = response.latest_timestamp
                 self.latest_date = response.latest_timestamp[:10]
@@ -350,7 +351,7 @@ class ElectricityMeter(Meter):
                 if new_data:
                     _LOGGER.debug(
                         f"New data is available for {self.sensor_type} sensor")
-                    response = await async_import_data(self.hass, self, new_data, self.sum)
+                    response = await async_import_data(self.hass, self, new_data, self.sum, True)
                     self.sum = response.sum
                     self.latest_timestamp = response.latest_timestamp
                     self.latest_date = response.latest_timestamp[:10]
