@@ -25,7 +25,7 @@ async def aysnc_push_half_hourly_data(value: float, timestamp, sensor):
 
     payload = CofyCloudDQPayload(
         deviceId=sensor.balena_uuid,
-        sensorId="powershaper_monitor",
+        sensorId="powershaper_monitor_total_energy",
         sensorName="powershaper.total_energy_consumed",
         metric="GridElectricityImport",
         metricKind="delta",
